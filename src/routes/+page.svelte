@@ -1,156 +1,305 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import "../styles/app.css";
+  import { createInstance, fetchInstances, formatError } from "$lib/tauriClient";
+  import type { NewWowInstance, WowInstance } from "$lib/types/instance";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  type NavSection = "instances" | "addons" | "profiles" | "snapshots" | "logs";
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  const NAV_ITEMS: { id: NavSection; label: string }[] = [
+    { id: "instances", label: "WoW Instances" },
+    { id: "addons", label: "Addons" },
+    { id: "profiles", label: "Profiles" },
+    { id: "snapshots", label: "Snapshots" },
+    { id: "logs", label: "Activity Log" },
+  ];
+
+  let section: NavSection = "instances";
+  let instances: WowInstance[] = [];
+  let selectedInstanceId: number | null = null;
+
+  let name = "";
+  let flavorSlug = "retail";
+  let rootPath = "";
+  let addonsPath = "";
+  let wtfPath = "";
+  let suffixesRaw = "_Mainline.toc, .toc";
+  let isDefault = true;
+
+  let addonsTouched = false;
+  let wtfTouched = false;
+  let submitting = false;
+  let formError = "";
+  let statusText = "Ready · 100% local storage (SQLite)";
+  let statusError = false;
+
+  $: activeInstance = instances.find((i) => i.id === selectedInstanceId) ?? null;
+
+  function setStatus(msg: string, err = false) {
+    statusText = msg;
+    statusError = err;
   }
+
+  function handleRootInput() {
+    const cleaned = rootPath.trim().replace(/[\\/]+$/, "");
+    if (!cleaned) return;
+    const sep = cleaned.includes("\\") ? "\\" : "/";
+    if (!addonsTouched) {
+      addonsPath = `${cleaned}${sep}Interface${sep}AddOns`;
+    }
+    if (!wtfTouched) {
+      wtfPath = `${cleaned}${sep}WTF`;
+    }
+  }
+
+  function parseSuffixes(raw: string): string[] {
+    const parts = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    return parts.length > 0 ? parts : [".toc"];
+  }
+
+  async function reloadInstances(preferredId?: number) {
+    try {
+      const list = await fetchInstances();
+      instances = list;
+
+      if (preferredId && list.some((i) => i.id === preferredId)) {
+        selectedInstanceId = preferredId;
+      } else if (
+        selectedInstanceId === null ||
+        !list.some((i) => i.id === selectedInstanceId)
+      ) {
+        const def = list.find((i) => i.is_default) ?? list[0] ?? null;
+        selectedInstanceId = def ? def.id : null;
+      }
+
+      if (list.length > 0 && !addonsTouched) {
+        isDefault = false;
+      }
+    } catch (err) {
+      setStatus(formatError(err), true);
+    }
+  }
+
+  async function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    formError = "";
+    submitting = true;
+
+    const payload: NewWowInstance = {
+      name: name.trim(),
+      flavor_slug: flavorSlug.trim(),
+      root_path: rootPath.trim(),
+      addons_path: addonsPath.trim(),
+      wtf_path: wtfPath.trim().length > 0 ? wtfPath.trim() : null,
+      toc_suffixes: parseSuffixes(suffixesRaw),
+      is_default: isDefault,
+    };
+
+    try {
+      const created = await createInstance(payload);
+      name = "";
+      rootPath = "";
+      addonsPath = "";
+      wtfPath = "";
+      addonsTouched = false;
+      wtfTouched = false;
+      setStatus(`Instance "${created.name}" saved to SQLite.`);
+      await reloadInstances(created.id);
+    } catch (err) {
+      const msg = formatError(err);
+      formError = msg;
+      setStatus(msg, true);
+    } finally {
+      submitting = false;
+    }
+  }
+
+  onMount(() => {
+    void reloadInstances();
+  });
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">Another WoW Addon Manager</div>
+    <nav class="nav-list" aria-label="Primary navigation">
+      {#each NAV_ITEMS as item}
+        <button
+          type="button"
+          class="nav-btn {item.id === section ? 'is-active' : ''}"
+          on:click={() => (section = item.id)}
+        >
+          {item.label}
+        </button>
+      {/each}
+    </nav>
+  </aside>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-label">Active instance:</span>
+      <select class="select" style="width: 260px;" bind:value={selectedInstanceId}>
+        {#if instances.length === 0}
+          <option value={null}>No instance configured</option>
+        {:else}
+          {#each instances as inst}
+            <option value={inst.id}>{inst.name} ({inst.flavor_slug})</option>
+          {/each}
+        {/if}
+      </select>
+    </div>
+    <div class="topbar-right">
+      <button type="button" class="btn" on:click={() => (section = "instances")}>
+        + Manage instances
+      </button>
+    </div>
+  </header>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+  <main class="main-content">
+    {#if section === "instances"}
+      <div class="view-header">
+        <h1>World of Warcraft Instances</h1>
+        <p>Configure your local installations (Retail, Classic, Forever, etc.) with zero external tracking.</p>
+      </div>
 
-<style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+      <div class="grid-2">
+        <section class="card">
+          <h2>Add an instance</h2>
+          <form on:submit={handleSubmit}>
+            <div class="form-group">
+              <label for="inst-name">Instance name *</label>
+              <input
+                id="inst-name"
+                class="input"
+                type="text"
+                placeholder="e.g. Retail or Classic Era"
+                bind:value={name}
+                required
+              />
+            </div>
 
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
+            <div class="form-group">
+              <label for="inst-flavor">Flavor / client version *</label>
+              <select id="inst-flavor" class="select" bind:value={flavorSlug}>
+                <option value="retail">retail</option>
+                <option value="classic_era">classic_era</option>
+                <option value="classic_progression">classic_progression</option>
+                <option value="forever">forever</option>
+                <option value="custom">custom</option>
+              </select>
+            </div>
 
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+            <div class="form-group">
+              <label for="inst-root">Client root directory *</label>
+              <input
+                id="inst-root"
+                class="input mono"
+                type="text"
+                placeholder="e.g. C:\Program Files (x86)\World of Warcraft\_retail_"
+                bind:value={rootPath}
+                on:input={handleRootInput}
+                required
+              />
+            </div>
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+            <div class="form-group">
+              <label for="inst-addons">Interface/AddOns directory *</label>
+              <input
+                id="inst-addons"
+                class="input mono"
+                type="text"
+                placeholder="Auto-filled or enter manually"
+                bind:value={addonsPath}
+                on:input={() => (addonsTouched = addonsPath.trim().length > 0)}
+                required
+              />
+            </div>
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
+            <div class="form-group">
+              <label for="inst-wtf">WTF directory (optional)</label>
+              <input
+                id="inst-wtf"
+                class="input mono"
+                type="text"
+                placeholder="Optional"
+                bind:value={wtfPath}
+                on:input={() => (wtfTouched = wtfPath.trim().length > 0)}
+              />
+            </div>
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
+            <div class="form-group">
+              <label for="inst-suffixes">.toc suffix priority (comma-separated)</label>
+              <input
+                id="inst-suffixes"
+                class="input mono"
+                type="text"
+                bind:value={suffixesRaw}
+              />
+            </div>
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
+            <label class="checkbox-row">
+              <input type="checkbox" bind:checked={isDefault} />
+              <span>Set as default instance</span>
+            </label>
 
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
+            <button type="submit" class="btn btn-primary" disabled={submitting}>
+              {submitting ? "Saving..." : "Save instance"}
+            </button>
 
-.row {
-  display: flex;
-  justify-content: center;
-}
+            {#if formError}
+              <div class="error-box">{formError}</div>
+            {/if}
+          </form>
+        </section>
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
+        <section class="card">
+          <h2>Configured instances ({instances.length})</h2>
+          {#if instances.length === 0}
+            <p class="empty-state">
+              No instances stored in SQLite yet. Use the form on the left to add one.
+            </p>
+          {:else}
+            <div class="instance-list">
+              {#each instances as inst}
+                <article class="instance-item">
+                  <div class="instance-item-top">
+                    <span class="instance-title">{inst.name}</span>
+                    <div class="badges">
+                      <span class="badge">{inst.flavor_slug}</span>
+                      {#if inst.is_default}
+                        <span class="badge badge-default">Default</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="path-line">AddOns: {inst.addons_path}</div>
+                  {#if inst.wtf_path}
+                    <div class="path-line">WTF: {inst.wtf_path}</div>
+                  {/if}
+                  <div class="path-line">.toc: {inst.toc_suffixes.join(" > ")}</div>
+                </article>
+              {/each}
+            </div>
+          {/if}
+        </section>
+      </div>
+    {:else}
+      <div class="view-header">
+        <h1>Coming soon</h1>
+        <p>This view will be wired up once the corresponding Rust module is implemented.</p>
+      </div>
+      <div class="card">
+        <p class="empty-state">
+          Selected instance: <strong>{activeInstance ? activeInstance.name : "None"}</strong>.
+        </p>
+      </div>
+    {/if}
+  </main>
 
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
-</style>
+  <footer class="statusbar">
+    <span class={statusError ? "status-err" : "status-ok"}>{statusText}</span>
+    <span>Privacy-first · Zero telemetry</span>
+  </footer>
+</div>
