@@ -1,7 +1,7 @@
 # Another WoW Addon Manager
 
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Zannnol/another-wow-addon-manager/pr-windows.yml?branch=main&label=PR%20Build%20%28Windows%29)](https://github.com/Zannnol/another-wow-addon-manager/actions)
-[![Release Workflow](https://img.shields.io/github/actions/workflow/status/Zannnol/another-wow-addon-manager/release.yml?label=Release%20%28Multi-OS%29)](https://github.com/Zannnol/another-wow-addon-manager/actions)
+[![PR Build (Windows)](https://github.com/Zannnol/another-wow-addon-manager/actions/workflows/pr-windows.yml/badge.svg?branch=main)](https://github.com/Zannnol/another-wow-addon-manager/actions/workflows/pr-windows.yml)
+[![Release Build (Multi-OS)](https://github.com/Zannnol/another-wow-addon-manager/actions/workflows/release.yml/badge.svg)](https://github.com/Zannnol/another-wow-addon-manager/actions/workflows/release.yml)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/Zannnol/another-wow-addon-manager)
 [![Built with Tauri v2](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8DB.svg)](https://tauri.app/)
 [![Privacy First](https://img.shields.io/badge/privacy-100%25%20local-success.svg)](#philosophie)
