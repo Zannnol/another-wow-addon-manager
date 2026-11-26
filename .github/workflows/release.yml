@@ -7,16 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Tag de release (ex: v0.1.0)"
+        description: "Release"
         required: true
         type: string
       draft:
-        description: "Créer en brouillon (draft)"
+        description: "Create Draft"
         required: false
         default: true
         type: boolean
       prerelease:
-        description: "Marquer comme pré-release"
+        description: "pre-release"
         required: false
         default: false
         type: boolean
